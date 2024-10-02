@@ -5,13 +5,14 @@ edition = "2021"
 
 [dependencies]
 nalgebra = "0.33.0"
-num-complex = "0.4.6"
-polynomen = { version="1.1.0" }
+num-complex = { version = "0.4.6", optional = true }
+polynomen = { version = "1.1.0", optional = true}
 rustfft = "6.2.0"
 
 
 [features]
 default = []
+poly_decomp = ["polynomen", "num-complex"]
 
 [dev-dependencies]
 float_eq = "1.0.1"

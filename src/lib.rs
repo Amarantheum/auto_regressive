@@ -5,6 +5,7 @@ mod yule_walker;
 pub struct AutoRegressiveModel {
     coefficients: Vec<f64>,
     noise_variance: f64,
+    noise_ratio: f64,
 }
 
 
@@ -18,7 +19,8 @@ impl AutoRegressiveModel {
         let result = yule_walker::yule_walker_from_auto_correlation(&auto_correlation[0..order + 1]);
         Self {
             coefficients: result.coefficients,
-            noise_variance: result.noise_variance,
+            noise_variance: result.noise_variance / signal.len() as f64,
+            noise_ratio: result.noise_variance / auto_correlation[0],
         }
     }
 
@@ -29,10 +31,42 @@ impl AutoRegressiveModel {
     pub fn noise_variance(&self) -> f64 {
         self.noise_variance
     }
+
+    pub fn noise_ratio(&self) -> f64 {
+        self.noise_ratio
+    }
+
+    pub fn predict(&self, length: usize, init: &[f64]) -> Vec<f64> {
+        let mut init_generated = Vec::with_capacity(self.coefficients.len());
+        if init.len() < self.coefficients.len() {
+            for _ in 0..(self.coefficients.len() - init.len()) {
+                init_generated.push(0.0);
+            }
+            for i in 0..init.len() {
+                init_generated.push(init[i]);
+            }
+        } else {
+            for i in 0..self.coefficients.len() {
+                init_generated.push(init[i]);
+            }
+        }
+        
+        for i in 0..length {
+            let mut sum = 0.0;
+            for j in 0..self.coefficients.len() {
+                sum += self.coefficients[j] * init_generated[i + self.coefficients.len() - j - 1];
+            }
+            init_generated.push(sum);
+        }
+        // TODO: inefficient to copy everything    
+        init_generated[self.coefficients.len()..].to_vec()
+    }
 }
 
+#[cfg(feature = "poly_decomp")]
 use num_complex::Complex;
 
+#[cfg(feature = "poly_decomp")]
 impl AutoRegressiveModel {
     pub fn get_poles(&self) -> Vec<Complex<f64>> {
         let mut coefs = Vec::with_capacity(self.coefficients.len() + 1);
@@ -92,6 +126,7 @@ mod tests {
         assert_float_eq!(model.noise_variance, expected_noise_variance, abs <= 1e-9);
     }
 
+    #[cfg(feature = "poly_decomp")]
     #[test]
     fn test_auto_regressive_model_poles() {
         let signal = vec![1.0, 2.0, 3.0, 4.0, 5.0];
@@ -113,6 +148,7 @@ mod tests {
         }
     }
 
+    
     #[test]
     fn test_auto_regressive_model_known_input() {
         let size = 100000;
@@ -143,6 +179,7 @@ mod tests {
         //plot_series(&power_spectral_density);
     }
 
+    #[cfg(feature = "poly_decomp")]
     #[test]
     fn test_auto_regressive_model_known_input_2() {
         let size = 100000;
