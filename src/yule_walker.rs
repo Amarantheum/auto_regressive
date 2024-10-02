@@ -1,5 +1,4 @@
 use nalgebra::{DMatrix, DVector};
-use crate::auto_correlation;
 
 #[derive(Debug)]
 pub struct YuleWalkerResult {
@@ -7,11 +6,9 @@ pub struct YuleWalkerResult {
     pub noise_variance: f64,
 }
 
-/// Compute the Yule-Walker equations for an AR model of order `p`.
-pub fn yule_walker(signal: &[f64], p: usize) -> YuleWalkerResult {
-    let mut auto_correlation = auto_correlation::auto_correlation_fft(signal);
-    auto_correlation.truncate(p + 1);
-
+/// Compute the Yule-Walker equations for an AR model of order `auto_correlation.len() - 1`.
+pub fn yule_walker_from_auto_correlation(auto_correlation: &[f64]) -> YuleWalkerResult {
+    let p = auto_correlation.len() - 1;
     let correlation_matrix = DMatrix::from_fn(p, p, |i, j| {
         // note that can't use abs here because of underflow
         auto_correlation[usize::max(i, j) - usize::min(i, j)]
@@ -35,12 +32,20 @@ mod tests {
     use super::*;
     use float_eq::assert_float_eq;
 
+    fn yule_walker(signal: &[f64], p: usize) -> YuleWalkerResult {
+        let auto_correlation = crate::auto_correlation::auto_correlation_fft(signal);
+        
+        yule_walker_from_auto_correlation(&auto_correlation[0..p + 1])
+    }
+
     #[test]
     fn test_yule_walker() {
         let signal = vec![1.0, 2.0, 3.0, 4.0, 5.0];
         let result = yule_walker(&signal, 2);
         let expected_coefficients = vec![232.0 / 285.0, -34.0 / 285.0];
         let expected_noise_variance = 55.0 - 232.0 / 285.0 * 40.0 + 34.0 / 285.0 * 26.0;
+
+        println!("{:?}", result);
 
         assert_eq!(result.coefficients.len(), expected_coefficients.len());
         for (actual, expected) in result.coefficients.iter().zip(expected_coefficients.iter()) {
