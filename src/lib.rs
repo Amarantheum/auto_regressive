@@ -63,26 +63,6 @@ impl AutoRegressiveModel {
     }
 }
 
-#[cfg(feature = "poly_decomp")]
-use num_complex::Complex;
-
-#[cfg(feature = "poly_decomp")]
-impl AutoRegressiveModel {
-    pub fn get_poles(&self) -> Vec<Complex<f64>> {
-        let mut coefs = Vec::with_capacity(self.coefficients.len() + 1);
-        // the polynomial is 1 - a_1 * z^-1 - a_2 * z^-2 - ... - a_p * z^-p
-        coefs.push(1.0);
-        for coef in self.coefficients.iter() {
-            coefs.push(-coef);
-        }
-        let poly = polynomen::Poly::new_from_coeffs(&coefs[..]);
-        poly.complex_roots()
-            .iter()
-            .map(|root| num_complex::Complex { re: root.0, im: root.1 }.inv() ) // invert the roots since they are in terms of z^(-1)
-            .collect()
-    }
-}
-
 #[allow(unused)]
 #[cfg(test)]
 mod tests {
@@ -94,6 +74,27 @@ mod tests {
     use rand_distr::{Normal, Distribution};
     use rustfft::{FftPlanner, num_complex::Complex};
     use plotters::prelude::*;
+
+    #[test]
+    fn test_basic_model() {
+        let mut signal = vec![2.0, -1.0];
+        let coefficients = vec![-0.5, -1.0];
+        let len = signal.len();
+        for i in len..10000 {
+            signal.push(coefficients[0] * signal[i - 1] + coefficients[1] * signal[i - 2]);
+        }
+
+        let mut model = AutoRegressiveModel::new_with_order(&signal, 2);
+        assert_float_eq!(model.coefficients()[0], coefficients[0], abs <= 1e-3);
+        assert_float_eq!(model.coefficients()[1], coefficients[1], abs <= 1e-3);
+
+        model.coefficients = coefficients.clone();
+        let predicted = model.predict(1000 - len, &signal[0..len]);
+        assert_eq!(predicted.len(), 1000 - len);
+        for i in 0..predicted.len() {
+            assert_float_eq!(predicted[i], signal[i + len], abs <= 1e-3);
+        }
+    }
 
     fn plot_series(series: &[f64]) {
         let max = series.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
@@ -125,29 +126,6 @@ mod tests {
 
         assert_float_eq!(model.noise_variance, expected_noise_variance, abs <= 1e-9);
     }
-
-    #[cfg(feature = "poly_decomp")]
-    #[test]
-    fn test_auto_regressive_model_poles() {
-        let signal = vec![1.0, 2.0, 3.0, 4.0, 5.0];
-        let model = AutoRegressiveModel::new_with_order(&signal, 2);
-        let poles = model.get_poles();
-        let a = 34.0/285.0;
-        let b = -232.0/285.0;
-        let c = 1.0;
-        let expected_poles = vec![
-            Complex::new((2.0 * a) / (-b - (b * b - 4_f64 * a * c).sqrt()), 0.0),
-            Complex::new((2.0 * a) / (-b + (b * b - 4_f64 * a * c).sqrt()), 0.0),
-        ];
-
-        println!("{:?}", poles);
-        assert_eq!(poles.len(), expected_poles.len());
-        for (actual, expected) in poles.iter().zip(expected_poles.iter()) {
-            assert_float_eq!(actual.re, expected.re, abs <= 1e-9);
-            assert_float_eq!(actual.im, expected.im, abs <= 1e-9);
-        }
-    }
-
     
     #[test]
     fn test_auto_regressive_model_known_input() {
@@ -169,50 +147,6 @@ mod tests {
         println!("{:?}", model);
         assert_float_eq!(model.coefficients()[0], a1, abs <= 1e-2);
         assert_float_eq!(model.coefficients()[1], a2, abs <= 1e-2);
-
-        // let mut fftplanner = FftPlanner::new();
-        // let fft = fftplanner.plan_fft_forward(size);
-        // let mut buffer = ar_signal.iter().map(|&value| Complex { re: value, im: 0.0 }).collect::<Vec<Complex<f64>>>();
-        // fft.process(&mut buffer);
-        // let power_spectral_density = buffer.iter().map(|value| value.norm_sqr()).collect::<Vec<f64>>();
-
-        //plot_series(&power_spectral_density);
-    }
-
-    #[cfg(feature = "poly_decomp")]
-    #[test]
-    fn test_auto_regressive_model_known_input_2() {
-        let size = 100000;
-        let p = 2;
-        let mut rng = rand::thread_rng();
-        let normal = Normal::new(0.0, 0.5).unwrap();
-        let signal: Vec<f64> = (0..size).map(|_| normal.sample(&mut rng)).collect();
-        let a1 = 0.999 * 2_f64.sqrt();
-        let a2 = -0.999 * 0.999;
-        let mut ar_signal = vec![0.0; signal.len()];
-        ar_signal[0] = signal[0];
-        ar_signal[1] = signal[1];
-        for i in p..signal.len() {
-            ar_signal[i] = a1 * ar_signal[i - 1] + a2 * ar_signal[i - 2] + signal[i];
-        }
-
-        let model = AutoRegressiveModel::new_with_order(&ar_signal, p);
-        //println!("{:?}", model);
-        assert_float_eq!(model.coefficients()[0], a1, abs <= 1e-2);
-        assert_float_eq!(model.coefficients()[1], a2, abs <= 1e-2);
-
-        //println!("{:?}", model.get_poles());
-        let poles = model.get_poles();
-        let expected_poles = vec![
-            Complex::from_polar(0.999, PI / 4.0),
-            Complex::from_polar(0.999, -PI / 4.0),
-        ];
-
-        assert_eq!(poles.len(), expected_poles.len());
-        for (actual, expected) in poles.iter().zip(expected_poles.iter()) {
-            assert_float_eq!(actual.re, expected.re, abs <= 1e-2);
-            assert_float_eq!(actual.im, expected.im, abs <= 1e-2);
-        }
 
         // let mut fftplanner = FftPlanner::new();
         // let fft = fftplanner.plan_fft_forward(size);

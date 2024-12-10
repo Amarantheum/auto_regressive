@@ -1,10 +1,10 @@
 [package]
 name = "auto_regressive"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Justin Bruss <>"]
 edition = "2021"
 description = "A library for constructing AR(p) models using the Yule-Walker equations."
-license = "GPL-3.0-only"
+license = "MIT"
 repository = "https://github.com/Amarantheum/auto_regressive"
 readme = "README.md"
 keywords = ["auto-regressive", "yule-walker"]
@@ -13,14 +13,11 @@ categories = ["science", "mathematics"]
 
 [dependencies]
 nalgebra = "0.33.0"
-num-complex = { version = "0.4.6", optional = true }
-polynomen = { version = "1.1.0", optional = true}
 rustfft = "6.2.0"
 
 
 [features]
 default = []
-poly_decomp = ["polynomen", "num-complex"]
 
 [dev-dependencies]
 float_eq = "1.0.1"
